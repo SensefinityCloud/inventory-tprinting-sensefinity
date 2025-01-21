@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -15,24 +14,27 @@ import (
 )
 
 func main() {
-	// Configure logger
+	// Load configuration first
+	if err := LoadConfig(); err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
+		fmt.Println("Press Enter to exit...")
+		fmt.Scanln()
+		return
+	}
+
+	// Configure logger using values from config
 	config := LoggerConfig{
-		EnableFileLogging: true, // Can be set to false to disable file logging
-		LogFilePath:       filepath.Join(os.TempDir(), "inventoryt-printer.log"),
+		EnableFileLogging: appConfig.EnableFileLogging,
+		LogFilePath:       appConfig.LogFilePath,
 	}
 
 	if err := InitLoggerWithConfig(config); err != nil {
-		Error(fmt.Sprintf("Failed to initialize logging: %v", err))
+		fmt.Printf("Failed to initialize logging: %v\n", err)
 		fmt.Println("Press Enter to exit...")
 		fmt.Scanln()
 		return
 	}
 	defer CloseLogger()
-
-	// Load configuration
-	if err := LoadConfig(); err != nil {
-		Error(fmt.Sprintf("Failed to load configuration: %v", err))
-	}
 
 	Info("=== InventoryT Printer Service ===")
 	Info("Waiting for print requests...")
