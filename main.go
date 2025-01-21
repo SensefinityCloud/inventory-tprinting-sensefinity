@@ -22,23 +22,9 @@ func main() {
 		return
 	}
 
-	// Configure logger using values from config
-	config := LoggerConfig{
-		EnableFileLogging: appConfig.EnableFileLogging,
-		LogFilePath:       appConfig.LogFilePath,
-	}
-
-	if err := InitLoggerWithConfig(config); err != nil {
-		fmt.Printf("Failed to initialize logging: %v\n", err)
-		fmt.Println("Press Enter to exit...")
-		fmt.Scanln()
-		return
-	}
-	defer CloseLogger()
-
-	Info("=== InventoryT Printer Service ===")
-	Info("Waiting for print requests...")
-	Info("Service started")
+	fmt.Println("=== InventoryT Printer Service ===")
+	fmt.Println("Waiting for print requests...")
+	fmt.Println("Service started")
 
 	if len(os.Args) > 1 {
 		url := os.Args[1]
@@ -63,7 +49,7 @@ func main() {
 }
 
 func handleTestCommand() error {
-	Info("Running connection test")
+	fmt.Println("Running connection test")
 
 	client := resty.New()
 	client.SetTimeout(5 * time.Second)
@@ -71,7 +57,7 @@ func handleTestCommand() error {
 
 	// Use configured endpoint
 	endpoint := appConfig.TestEndpoint
-	Info(fmt.Sprintf("Testing connection to: %s", endpoint))
+	fmt.Printf("Testing connection to: %s\n", endpoint)
 
 	resp, err := client.R().
 		SetHeader("User-Agent", "InventoryPrinter/1.0").
@@ -79,7 +65,7 @@ func handleTestCommand() error {
 
 	if err != nil {
 		if strings.HasPrefix(endpoint, "https://") {
-			Warning("HTTPS connection failed, trying HTTP...")
+			fmt.Println("HTTPS connection failed, trying HTTP...")
 			// Try HTTP as fallback
 			httpEndpoint := "http://" + strings.TrimPrefix(endpoint, "https://")
 			resp, err = client.R().
@@ -88,20 +74,20 @@ func handleTestCommand() error {
 		}
 
 		if err != nil {
-			Error("Connection test failed")
-			Warning("Please check:")
-			Warning("1. Is the server running?")
-			Warning("2. Is the correct endpoint configured?")
-			Warning("3. Is the firewall blocking the connection?")
-			Warning(fmt.Sprintf("Current endpoint: %s", endpoint))
-			Warning("Press Enter to continue...")
+			fmt.Println("Connection test failed")
+			fmt.Println("Please check:")
+			fmt.Println("1. Is the server running?")
+			fmt.Println("2. Is the correct endpoint configured?")
+			fmt.Println("3. Is the firewall blocking the connection?")
+			fmt.Printf("Current endpoint: %s\n", endpoint)
+			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
 			return fmt.Errorf("connection failed: %v", err)
 		}
 	}
 
-	Success("Connection test successful")
-	Info(fmt.Sprintf("Response: Status=%v, Body=%v", resp.Status(), string(resp.Body())))
+	fmt.Println("Connection test successful")
+	fmt.Printf("Response: Status=%v, Body=%v\n", resp.Status(), string(resp.Body()))
 	return nil
 }
 
@@ -121,7 +107,7 @@ func createDummyFile(itemId, itemName string) (string, error) {
 }
 
 func showNotification(title, message string) {
-	Info(fmt.Sprintf("Notification: %s - %s", title, message))
+	fmt.Printf("Notification: %s - %s\n", title, message)
 
 	osType := runtime.GOOS
 	switch osType {
@@ -140,29 +126,29 @@ func showNotification(title, message string) {
 			$notify.Dispose()
 		`, title, message))
 		if err := cmd.Run(); err != nil {
-			Error(fmt.Sprintf("Failed to show Windows notification: %v", err))
+			fmt.Printf("Failed to show Windows notification: %v\n", err)
 		}
 	case "linux":
 		cmd := exec.Command("notify-send", title, message)
 		if err := cmd.Run(); err != nil {
-			Error(fmt.Sprintf("Failed to show Linux notification: %v", err))
+			fmt.Printf("Failed to show Linux notification: %v\n", err)
 		}
 	default:
-		Info(fmt.Sprintf("%s: %s", title, message))
+		fmt.Printf("%s: %s\n", title, message)
 	}
 }
 
 func handlePrintRequest(urlStr string) {
-	Info(fmt.Sprintf("Received print request: %s", urlStr))
+	fmt.Printf("Received print request: %s\n", urlStr)
 
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		Error(fmt.Sprintf("Failed to parse URL: %v", err))
+		fmt.Printf("Failed to parse URL: %v\n", err)
 		showNotification("Error", fmt.Sprintf("Failed to parse URL: %v", err))
 		return
 	}
 
-	Info(fmt.Sprintf("Received URL: %s, Path: %s, Host: %s", urlStr, parsedURL.Path, parsedURL.Host))
+	fmt.Printf("Received URL: %s, Path: %s, Host: %s\n", urlStr, parsedURL.Path, parsedURL.Host)
 
 	// Normalize the path by trimming slashes and comparing lowercase
 	normalizedPath := strings.Trim(parsedURL.Path, "/")
@@ -174,7 +160,7 @@ func handlePrintRequest(urlStr string) {
 	if isTest {
 		err := handleTestCommand()
 		if err == nil {
-			Info("Test successful")
+			fmt.Println("Test successful")
 			showNotification("Test Success", "Connection test successful")
 			return
 		}
@@ -187,7 +173,7 @@ func handlePrintRequest(urlStr string) {
 		return
 	}
 
-	Info(fmt.Sprintf("Processing print request: %s", urlStr))
+	fmt.Printf("Processing print request: %s\n", urlStr)
 	// Parse the URL to get itemId and itemName
 	queryParams := parsedURL.Query()
 	itemId := queryParams.Get("id")
@@ -196,7 +182,7 @@ func handlePrintRequest(urlStr string) {
 	// Create a dummy file to simulate the print job
 	fileName, err := createDummyFile(itemId, itemName)
 	if err != nil {
-		Error(fmt.Sprintf("Failed to create file: %v", err))
+		fmt.Printf("Failed to create file: %v\n", err)
 		showNotification("Print Error", fmt.Sprintf("Failed to create file: %v", err))
 		return
 	}
@@ -213,7 +199,7 @@ func handlePrintRequest(urlStr string) {
 	case "linux":
 		cmd = exec.Command("lpr", "-l", fileName)
 	default:
-		Error("OS Not supported")
+		fmt.Println("OS Not supported")
 		showNotification("Print Error", "OS Not supported")
 		return
 	}
@@ -221,44 +207,44 @@ func handlePrintRequest(urlStr string) {
 	// Execute the command
 	if err = cmd.Run(); err != nil {
 		if strings.Contains(err.Error(), "Access is denied") {
-			Error("Access denied. Please run the application with elevated privileges.")
-			Warning("Press Enter to continue...")
+			fmt.Println("Access denied. Please run the application with elevated privileges.")
+			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
 			showNotification("Print Error", "Access denied. Please run the application with elevated privileges.")
 		} else {
-			Error(fmt.Sprintf("Print failed: %v", err))
+			fmt.Printf("Print failed: %v\n", err)
 			showNotification("Print Error", fmt.Sprintf("Print failed: %v", err))
 		}
 		return
 	}
 
-	Success(fmt.Sprintf("Successfully printed label for %s", itemName))
+	fmt.Printf("Successfully printed label for %s\n", itemName)
 	showNotification("Print Success", fmt.Sprintf("Successfully printed label for %s", itemName))
 }
 
 // Add this new function to handle configuration commands
 func handleConfigCommand(args []string) {
 	if len(args) < 3 {
-		Error("Usage: inventoryt-printer://config/endpoint?url=<new_endpoint>")
+		fmt.Println("Usage: inventoryt-printer://config/endpoint?url=<new_endpoint>")
 		return
 	}
 
 	queryParams, err := url.ParseQuery(args[2])
 	if err != nil {
-		Error(fmt.Sprintf("Failed to parse query parameters: %v", err))
+		fmt.Printf("Failed to parse query parameters: %v\n", err)
 		return
 	}
 
 	newEndpoint := queryParams.Get("url")
 	if newEndpoint == "" {
-		Error("No endpoint URL provided")
+		fmt.Println("No endpoint URL provided")
 		return
 	}
 
 	if err := SetTestEndpoint(newEndpoint); err != nil {
-		Error(fmt.Sprintf("Failed to save configuration: %v", err))
+		fmt.Printf("Failed to save configuration: %v\n", err)
 		return
 	}
 
-	Success(fmt.Sprintf("Test endpoint updated to: %s", newEndpoint))
+	fmt.Printf("Test endpoint updated to: %s\n", newEndpoint)
 }

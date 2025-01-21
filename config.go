@@ -7,21 +7,17 @@ import (
 )
 
 type Config struct {
-	TestEndpoint      string `json:"testEndpoint"`
-	EnableFileLogging bool   `json:"enableFileLogging"`
-	LogFilePath       string `json:"logFilePath"`
+	TestEndpoint string `json:"testEndpoint"`
 }
 
 var appConfig = Config{
-	TestEndpoint:      "http://inventory.sensefinity.com/apptest", // default value
-	EnableFileLogging: true,
-	LogFilePath:       filepath.Join(os.TempDir(), "inventoryt-printer.log"),
+	TestEndpoint: "http://inventory.sensefinity.com/apptest", // default value
 }
 
 func LoadConfig() error {
 	configPath := getConfigPath()
 	data, err := os.ReadFile(configPath)
-	if err != nil {
+	if (err != nil) {
 		if os.IsNotExist(err) {
 			return SaveConfig() // Save default config if file doesn't exist
 		}
