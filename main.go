@@ -1,16 +1,16 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
-	"golang.org/x/sys/windows"
+	"github.com/go-resty/resty/v2"
 )
 
 func main() {
@@ -23,147 +23,64 @@ func main() {
 	}
 
 	// Check if protocol exists and if the path needs updating
-	if protocolExists() {
-		if needsPathUpdate() {
-			registerCustomProtocolHandler()
+	if ProtocolExists() {
+		if NeedsPathUpdate() {
+			RegisterCustomProtocolHandler()
 			showNotification("Printer Service", "Application path has been updated")
 		} else {
 			showNotification("Printer Service", "Printer service is already registered")
 		}
 	} else {
-		registerCustomProtocolHandler()
+		RegisterCustomProtocolHandler()
 		showNotification("Printer Service", "Application initialized and ready to print")
 	}
 }
 
-func protocolExists() bool {
-	osType := runtime.GOOS
-	switch osType {
-	case "windows":
-		return windowsProtocolExists()
-	case "linux":
-		return linuxProtocolExists()
-	default:
-		return false
-	}
-}
+func handleTestCommand() error {
+	client := resty.New()
+	client.SetTimeout(5 * time.Second)
 
-func windowsProtocolExists() bool {
-	cmd := exec.Command("powershell", "-Command", `
-		Test-Path -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer"
-	`)
-	output, err := cmd.Output()
-	return err == nil && strings.TrimSpace(string(output)) == "True"
-}
+	resp, err := client.R().
+		SetHeader("User-Agent", "InventoryPrinter/1.0").
+		Get("http://192.168.1.104:5000/apptest")
 
-func linuxProtocolExists() bool {
-	desktopPath := fmt.Sprintf("%s/.local/share/applications/inventoryt-printer.desktop", os.Getenv("HOME"))
-	_, err := os.Stat(desktopPath)
-	return !errors.Is(err, os.ErrNotExist)
-}
-
-func registerCustomProtocolHandler() {
-	exePath, err := os.Executable()
 	if err != nil {
-		fmt.Printf("Failed to get executable path: %v\n", err)
-		return
+		log.Printf("Error making request: %v", err)
+		return fmt.Errorf("connection failed: %v", err)
 	}
 
-	osType := runtime.GOOS
-	switch osType {
-	case "windows":
-		registerWindowsProtocol(exePath)
-	case "linux":
-		registerLinuxProtocol(exePath)
-	default:
-		fmt.Println("OS not supported for protocol registration")
-	}
-}
-
-func isAdmin() bool {
-	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
-	return err == nil
-}
-
-func registerWindowsProtocol(exePath string) {
-	if !isAdmin() {
-		// Re-run the application with elevated privileges
-		verb := "runas"
-		exe, _ := os.Executable()
-		cwd, _ := os.Getwd()
-
-		verbPtr, _ := windows.UTF16PtrFromString(verb)
-		exePtr, _ := windows.UTF16PtrFromString(exe)
-		cwdPtr, _ := windows.UTF16PtrFromString(cwd)
-		argPtr, _ := windows.UTF16PtrFromString("")
-
-		var showCmd int32 = 1 //SW_NORMAL
-
-		err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
-		if err != nil {
-			fmt.Printf("Failed to elevate privileges: %v\n", err)
-		}
-		os.Exit(0)
-		return
-	}
-
-	// Use PowerShell to set registry entries with proper escaping
-	psCmd := fmt.Sprintf(`
-		New-Item -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer" -Force
-		Set-ItemProperty -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer" -Name "(Default)" -Value "URL:Inventory Printer Protocol"
-		Set-ItemProperty -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer" -Name "URL Protocol" -Value ""
-		New-Item -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer\shell\open\command" -Force
-		Set-ItemProperty -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer\shell\open\command" -Name "(Default)" -Value '"%s" "%%1"'
-	`, strings.ReplaceAll(exePath, `\`, `\\`))
-
-	cmd := exec.Command("powershell", "-Command", psCmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("Failed to register Windows protocol: %v\nOutput: %s\n", err, string(out))
-		return
-	}
-
-	fmt.Println("Windows protocol handler registered successfully")
-}
-
-func registerLinuxProtocol(exePath string) {
-	desktopEntry := fmt.Sprintf(`[Desktop Entry]
-Name=Inventory Printer
-Exec=%s %%u
-Type=Application
-Terminal=false
-Categories=Application;
-MimeType=x-scheme-handler/inventoryt-printer;
-`, exePath)
-
-	// Create .desktop file
-	desktopPath := fmt.Sprintf("%s/.local/share/applications/inventoryt-printer.desktop", os.Getenv("HOME"))
-	if err := os.MkdirAll(filepath.Dir(desktopPath), 0755); err != nil {
-		fmt.Printf("Failed to create directory: %v\n", err)
-		return
-	}
-
-	if err := os.WriteFile(desktopPath, []byte(desktopEntry), 0755); err != nil {
-		fmt.Printf("Failed to create .desktop file: %v\n", err)
-		return
-	}
-
-	// Register protocol handler
-	cmd := exec.Command("xdg-mime", "default", "inventoryt-printer.desktop", "x-scheme-handler/inventoryt-printer")
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Failed to register Linux protocol: %v\n", err)
-		return
-	}
-	fmt.Println("Linux protocol handler registered successfully")
+	log.Printf("Response: Status=%v, Body=%v", resp.Status(), string(resp.Body()))
+	return nil
 }
 
 func handlePrintRequest(urlStr string) {
-	// Parse the URL to get itemId and itemName
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		showNotification("Print Error", fmt.Sprintf("Failed to parse URL: %v", err))
+		showNotification("Error", fmt.Sprintf("Failed to parse URL: %v", err))
 		return
 	}
 
+	log.Printf("Received URL: %s, Path: %s, Host: %s", urlStr, parsedURL.Path, parsedURL.Host)
+
+	// Normalize the path by trimming slashes and comparing lowercase
+	normalizedPath := strings.Trim(parsedURL.Path, "/")
+	normalizedHost := strings.ToLower(parsedURL.Host)
+
+	// Check for test command in both path and host
+	isTest := normalizedPath == "test" || normalizedHost == "test"
+
+	if isTest {
+		err := handleTestCommand()
+		if err == nil {
+			log.Printf("Test successful")
+			showNotification("Test Success", "Connection test successful")
+			return
+		}
+		return
+	}
+
+	log.Printf("Processing print request: %s", urlStr)
+	// Parse the URL to get itemId and itemName
 	queryParams := parsedURL.Query()
 	itemId := queryParams.Get("id")
 	itemName := queryParams.Get("name")
@@ -242,61 +159,4 @@ func showNotification(title, message string) {
 	default:
 		fmt.Printf("%s: %s\n", title, message)
 	}
-}
-
-func needsPathUpdate() bool {
-	osType := runtime.GOOS
-	switch osType {
-	case "windows":
-		return windowsNeedsPathUpdate()
-	case "linux":
-		return linuxNeedsPathUpdate()
-	default:
-		return false
-	}
-}
-
-func windowsNeedsPathUpdate() bool {
-	cmd := exec.Command("powershell", "-Command", `
-		(Get-ItemProperty -Path "HKLM:\SOFTWARE\Classes\inventoryt-printer\shell\open\command").'(Default)'
-	`)
-	output, err := cmd.Output()
-	if err != nil {
-		return true
-	}
-
-	currentExePath, err := os.Executable()
-	if err != nil {
-		return true
-	}
-
-	// Clean up the registry value for comparison
-	registryPath := strings.TrimSpace(string(output))
-	registryPath = strings.Trim(registryPath, `"`)
-	registryPath = strings.Split(registryPath, `" "`)[0] // Remove the "%1" part
-
-	return !strings.EqualFold(registryPath, currentExePath)
-}
-
-func linuxNeedsPathUpdate() bool {
-	currentExePath, err := os.Executable()
-	if err != nil {
-		return true
-	}
-
-	desktopPath := fmt.Sprintf("%s/.local/share/applications/inventoryt-printer.desktop", os.Getenv("HOME"))
-	content, err := os.ReadFile(desktopPath)
-	if err != nil {
-		return true
-	}
-
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Exec=") {
-			registeredPath := strings.TrimPrefix(line, "Exec=")
-			registeredPath = strings.Split(registeredPath, " ")[0] // Remove the %u part
-			return registeredPath != currentExePath
-		}
-	}
-	return true
 }
