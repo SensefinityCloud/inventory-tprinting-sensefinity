@@ -57,11 +57,11 @@ func registerWindowsProtocol(exePath string) {
 
 	cmd := exec.Command("powershell", "-Command", psCmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("Failed to register Windows protocol: %v\nOutput: %s\n", err, string(out))
+		Error(fmt.Sprintf("Failed to register Windows protocol: %v\nOutput: %s", err, string(out)))
 		return
 	}
 
-	fmt.Println("Windows protocol handler registered successfully")
+	Success("Windows protocol handler registered successfully")
 }
 
 func isAdmin() bool {
@@ -83,7 +83,7 @@ func elevatePrivileges() {
 
 	err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
 	if err != nil {
-		fmt.Printf("Failed to elevate privileges: %v\n", err)
+		Error(fmt.Sprintf("Failed to elevate privileges: %v", err))
 	}
 	os.Exit(0)
 }
