@@ -1,4 +1,4 @@
-module github.com/yourusername/InventoryTPrinting
+module github.com/SensefinityCloud/InventoryTPrinting
 
 go 1.23
 
