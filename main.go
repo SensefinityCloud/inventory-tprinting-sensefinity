@@ -42,7 +42,7 @@ func handleTestCommand() error {
 
 	resp, err := client.R().
 		SetHeader("User-Agent", "InventoryPrinter/1.0").
-		Get("http://192.168.1.104:5000/apptest")
+		Get("https://inventory.sensefinity.com/apptest")
 
 	if err != nil {
 		log.Printf("Error making request: %v", err)

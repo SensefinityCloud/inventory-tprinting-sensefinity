@@ -11,6 +11,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30  # Add a timeout of 30 minutes
     
     steps:
       - uses: actions/checkout@v3
