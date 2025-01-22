@@ -194,7 +194,6 @@ func handlePrintRequest(urlStr string) {
 		showNotification("Print Error", fmt.Sprintf("Failed to create file: %v", err))
 		return
 	}
-	defer os.Remove(fileName) // Ensure the file is removed after use
 
 	// Determine the OS and execute the appropriate print command
 	osType := runtime.GOOS
@@ -223,9 +222,18 @@ func handlePrintRequest(urlStr string) {
 			fmt.Printf("Print failed: %v\n", err)
 			showNotification("Print Error", fmt.Sprintf("Print failed: %v", err))
 		}
+		os.Remove(fileName) // Clean up file on error
 		return
 	}
 
 	fmt.Printf("Successfully printed label for %s\n", itemName)
 	showNotification("Print Success", fmt.Sprintf("Successfully printed label for %s", itemName))
+
+	// Wait a bit to ensure the print spooler has processed the file
+	time.Sleep(2 * time.Second)
+
+	// Clean up file after successful print
+	if err := os.Remove(fileName); err != nil {
+		fmt.Printf("Warning: Failed to clean up temporary file %s: %v\n", fileName, err)
+	}
 }
