@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -83,19 +84,41 @@ func handleTestCommand() error {
 	return nil
 }
 
-func createDummyFile(itemId, itemName string) (string, error) {
-	tmpFile, err := os.CreateTemp("", fmt.Sprintf("%s_%s_*.txt", itemId, itemName))
-	if err != nil {
-		return "", err
-	}
-	defer tmpFile.Close()
-
-	_, err = tmpFile.WriteString("This is a dummy print file.")
-	if err != nil {
-		return "", err
+func createZPLFile(itemId, itemName string) (string, error) {
+	// Create labels directory if it doesn't exist
+	labelsDir := "./labels"
+	if err := os.MkdirAll(labelsDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create labels directory: %v", err)
 	}
 
-	return tmpFile.Name(), nil
+	// Generate ZPL code
+	labelHeight := 73
+	centerY := labelHeight / 2
+	textX := 155
+	textY := centerY - 10
+	barcodeX := 0
+	barcodeY := centerY - 7
+
+	// Truncate item name if longer than 28 characters
+	if len(itemName) > 28 {
+		itemName = itemName[:28]
+	}
+
+	// Build ZPL code
+	zplInit := "^XA"
+	zplName := fmt.Sprintf("^FT%d,%d^A0N,18,18^FD%s^FS", textX, textY, itemName)
+	zplBarcode := fmt.Sprintf("^FT%d,%d^BY1^BCN,30,Y,N,N^FD%s^FS", barcodeX, barcodeY, itemId)
+	zplEnd := "^XZ"
+	zplCode := zplInit + zplBarcode + zplName + zplEnd
+
+	// Create and write to file
+	fileName := filepath.Join(labelsDir, itemId+".txt")
+	err := os.WriteFile(fileName, []byte(zplCode), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write ZPL file: %v", err)
+	}
+
+	return fileName, nil
 }
 
 func showNotification(title, message string) {
@@ -164,14 +187,13 @@ func handlePrintRequest(urlStr string) {
 	itemId := queryParams.Get("id")
 	itemName := queryParams.Get("name")
 
-	// Create a dummy file to simulate the print job
-	fileName, err := createDummyFile(itemId, itemName)
+	// Create a ZPL file to simulate the print job
+	fileName, err := createZPLFile(itemId, itemName)
 	if err != nil {
 		fmt.Printf("Failed to create file: %v\n", err)
 		showNotification("Print Error", fmt.Sprintf("Failed to create file: %v", err))
 		return
 	}
-	defer os.Remove(fileName) // Ensure the file is removed after use
 
 	// Determine the OS and execute the appropriate print command
 	osType := runtime.GOOS
@@ -200,9 +222,18 @@ func handlePrintRequest(urlStr string) {
 			fmt.Printf("Print failed: %v\n", err)
 			showNotification("Print Error", fmt.Sprintf("Print failed: %v", err))
 		}
+		os.Remove(fileName) // Clean up file on error
 		return
 	}
 
 	fmt.Printf("Successfully printed label for %s\n", itemName)
 	showNotification("Print Success", fmt.Sprintf("Successfully printed label for %s", itemName))
+
+	// Wait a bit to ensure the print spooler has processed the file
+	time.Sleep(2 * time.Second)
+
+	// Clean up file after successful print
+	if err := os.Remove(fileName); err != nil {
+		fmt.Printf("Warning: Failed to clean up temporary file %s: %v\n", fileName, err)
+	}
 }
