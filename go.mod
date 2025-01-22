@@ -1,4 +1,4 @@
-module github.com/SensefinityCloud/InventoryTPrinting
+module github.com/SensefinityCloud/inventory-tprinting-sensefinity
 
 go 1.21
 
