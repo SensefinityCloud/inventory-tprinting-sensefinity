@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -34,13 +33,13 @@ func main() {
 	if ProtocolExists() {
 		if NeedsPathUpdate() {
 			RegisterCustomProtocolHandler()
-			showNotification("Printer Service", "Application path has been updated")
+			fmt.Println("Printer Service: Application path has been updated")
 		} else {
-			showNotification("Printer Service", "Printer service is already registered")
+			fmt.Println("Printer Service: Printer service is already registered")
 		}
 	} else {
 		RegisterCustomProtocolHandler()
-		showNotification("Printer Service", "Application initialized and ready to print")
+		fmt.Println("Printer Service: Application initialized and ready to print")
 	}
 }
 
@@ -85,12 +84,6 @@ func handleTestCommand() error {
 }
 
 func createZPLFile(itemId, itemName string) (string, error) {
-	// Create labels directory if it doesn't exist
-	labelsDir := "./labels"
-	if err := os.MkdirAll(labelsDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create labels directory: %v", err)
-	}
-
 	// Generate ZPL code
 	labelHeight := 73
 	centerY := labelHeight / 2
@@ -111,46 +104,18 @@ func createZPLFile(itemId, itemName string) (string, error) {
 	zplEnd := "^XZ"
 	zplCode := zplInit + zplBarcode + zplName + zplEnd
 
-	// Create and write to file
-	fileName := filepath.Join(labelsDir, itemId+".txt")
-	err := os.WriteFile(fileName, []byte(zplCode), 0644)
+	// Create and write to temp file
+	tempFile, err := os.CreateTemp("", "zpl-*.txt")
 	if err != nil {
-		return "", fmt.Errorf("failed to write ZPL file: %v", err)
+		return "", fmt.Errorf("failed to create temp file: %v", err)
+	}
+	defer tempFile.Close()
+
+	if _, err := tempFile.Write([]byte(zplCode)); err != nil {
+		return "", fmt.Errorf("failed to write ZPL data: %v", err)
 	}
 
-	return fileName, nil
-}
-
-func showNotification(title, message string) {
-	fmt.Printf("Notification: %s - %s\n", title, message)
-
-	osType := runtime.GOOS
-	switch osType {
-	case "windows":
-		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(`
-			Add-Type -AssemblyName System.Windows.Forms
-			$notify = New-Object System.Windows.Forms.NotifyIcon
-			$notify.Icon = [System.Drawing.SystemIcons]::Information
-			$notify.BalloonTipIcon = "Info"
-			$notify.BalloonTipTitle = "%s"
-			$notify.BalloonTipText = "%s"
-			$notify.Visible = $True
-			$notify.ShowBalloonTip(5000)
-			Start-Sleep -Seconds 5
-			$notify.ShowBalloonTip(5000)
-			$notify.Dispose()
-		`, title, message))
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("Failed to show Windows notification: %v\n", err)
-		}
-	case "linux":
-		cmd := exec.Command("notify-send", title, message)
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("Failed to show Linux notification: %v\n", err)
-		}
-	default:
-		fmt.Printf("%s: %s\n", title, message)
-	}
+	return tempFile.Name(), nil
 }
 
 func handlePrintRequest(urlStr string) {
@@ -159,7 +124,6 @@ func handlePrintRequest(urlStr string) {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		fmt.Printf("Failed to parse URL: %v\n", err)
-		showNotification("Error", fmt.Sprintf("Failed to parse URL: %v", err))
 		return
 	}
 
@@ -176,7 +140,6 @@ func handlePrintRequest(urlStr string) {
 		err := handleTestCommand()
 		if err == nil {
 			fmt.Println("Test successful")
-			showNotification("Test Success", "Connection test successful")
 		}
 		return
 	}
@@ -191,7 +154,6 @@ func handlePrintRequest(urlStr string) {
 	fileName, err := createZPLFile(itemId, itemName)
 	if err != nil {
 		fmt.Printf("Failed to create file: %v\n", err)
-		showNotification("Print Error", fmt.Sprintf("Failed to create file: %v", err))
 		return
 	}
 
@@ -207,7 +169,6 @@ func handlePrintRequest(urlStr string) {
 		cmd = exec.Command("lpr", "-l", fileName)
 	default:
 		fmt.Println("OS Not supported")
-		showNotification("Print Error", "OS Not supported")
 		return
 	}
 
@@ -217,17 +178,14 @@ func handlePrintRequest(urlStr string) {
 			fmt.Println("Access denied. Please run the application with elevated privileges.")
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
-			showNotification("Print Error", "Access denied. Please run the application with elevated privileges.")
 		} else {
 			fmt.Printf("Print failed: %v\n", err)
-			showNotification("Print Error", fmt.Sprintf("Print failed: %v", err))
 		}
 		os.Remove(fileName) // Clean up file on error
 		return
 	}
 
 	fmt.Printf("Successfully printed label for %s\n", itemName)
-	showNotification("Print Success", fmt.Sprintf("Successfully printed label for %s", itemName))
 
 	// Wait a bit to ensure the print spooler has processed the file
 	time.Sleep(2 * time.Second)
