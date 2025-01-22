@@ -21,8 +21,8 @@ A cross-platform printer service that handles custom protocol URLs for label pri
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/InventoryTPrinting.git
-cd InventoryTPrinting
+git clone https://github.com/yourusername/inventory-tprinting-sensefinity.git
+cd inventory-tprinting-sensefinity
 ```
 
 2. Build for your platform:
