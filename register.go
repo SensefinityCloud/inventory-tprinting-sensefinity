@@ -28,7 +28,7 @@ func ProtocolExists() bool {
 func RegisterCustomProtocolHandler() {
 	exePath, err := os.Executable()
 	if err != nil {
-		Error(fmt.Sprintf("Failed to get executable path: %v", err))
+		fmt.Printf("Failed to get executable path: %v\n", err)
 		return
 	}
 
@@ -39,7 +39,7 @@ func RegisterCustomProtocolHandler() {
 	case "linux":
 		registerLinuxProtocol(exePath)
 	default:
-		Warning("OS not supported for protocol registration")
+		fmt.Println("OS not supported for protocol registration")
 	}
 }
 
@@ -99,20 +99,20 @@ MimeType=x-scheme-handler/inventoryt-printer;
 
 	desktopPath := fmt.Sprintf("%s/.local/share/applications/inventoryt-printer.desktop", os.Getenv("HOME"))
 	if err := os.MkdirAll(filepath.Dir(desktopPath), 0755); err != nil {
-		Error(fmt.Sprintf("Failed to create directory: %v", err))
+		fmt.Printf("Failed to create directory: %v\n", err)
 		return
 	}
 
 	if err := os.WriteFile(desktopPath, []byte(desktopEntry), 0755); err != nil {
-		Error(fmt.Sprintf("Failed to create .desktop file: %v", err))
+		fmt.Printf("Failed to create .desktop file: %v\n", err)
 		return
 	}
 
 	cmd := exec.Command("xdg-mime", "default", "inventoryt-printer.desktop", "x-scheme-handler/inventoryt-printer")
 	if err := cmd.Run(); err != nil {
-		Error(fmt.Sprintf("Failed to register Linux protocol: %v", err))
+		fmt.Printf("Failed to register Linux protocol: %v\n", err)
 		return
 	}
 
-	Success("Linux protocol handler registered successfully")
+	fmt.Println("Linux protocol handler registered successfully")
 }
