@@ -13,15 +13,10 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-func main() {
-	// Load configuration first
-	if err := LoadConfig(); err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
-		fmt.Println("Press Enter to exit...")
-		fmt.Scanln()
-		return
-	}
+// Change the test endpoint to a reliable test service
+const testEndpoint = "https://inventory.sensefinity.com/apptest"
 
+func main() {
 	fmt.Println("=== InventoryT Printer Service ===")
 	fmt.Println("Waiting for print requests...")
 	fmt.Println("Service started")
@@ -55,8 +50,7 @@ func handleTestCommand() error {
 	client.SetTimeout(5 * time.Second)
 	client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 
-	// Use configured endpoint
-	endpoint := appConfig.TestEndpoint
+	endpoint := testEndpoint
 	fmt.Printf("Testing connection to: %s\n", endpoint)
 
 	resp, err := client.R().
@@ -64,30 +58,28 @@ func handleTestCommand() error {
 		Get(endpoint)
 
 	if err != nil {
-		if strings.HasPrefix(endpoint, "https://") {
-			fmt.Println("HTTPS connection failed, trying HTTP...")
-			// Try HTTP as fallback
-			httpEndpoint := "http://" + strings.TrimPrefix(endpoint, "https://")
-			resp, err = client.R().
-				SetHeader("User-Agent", "InventoryPrinter/1.0").
-				Get(httpEndpoint)
+		fmt.Printf("Network error: %v\n", err)
+		if strings.Contains(err.Error(), "no such host") {
+			fmt.Println("Internet connection might be down or DNS resolution failed")
+		} else if strings.Contains(err.Error(), "connection refused") {
+			fmt.Println("Server is not accepting connections")
+		} else if strings.Contains(err.Error(), "timeout") {
+			fmt.Println("Connection timed out - server might be slow or unreachable")
 		}
-
-		if err != nil {
-			fmt.Println("Connection test failed")
-			fmt.Println("Please check:")
-			fmt.Println("1. Is the server running?")
-			fmt.Println("2. Is the correct endpoint configured?")
-			fmt.Println("3. Is the firewall blocking the connection?")
-			fmt.Printf("Current endpoint: %s\n", endpoint)
-			fmt.Println("Press Enter to continue...")
-			fmt.Scanln()
-			return fmt.Errorf("connection failed: %v", err)
-		}
+		fmt.Println("Press Enter to continue...")
+		fmt.Scanln()
+		return fmt.Errorf("connection failed: %v", err)
 	}
 
-	fmt.Println("Connection test successful")
-	fmt.Printf("Response: Status=%v, Body=%v\n", resp.Status(), string(resp.Body()))
+	if resp.StatusCode() != 200 {
+		fmt.Printf("Server returned error status: %d\n", resp.StatusCode())
+		fmt.Println("Press Enter to continue...")
+		fmt.Scanln()
+		return fmt.Errorf("server error: %d", resp.StatusCode())
+	}
+
+	fmt.Println("Connection test successful!")
+	fmt.Printf("Server responded with status: %d\n", resp.StatusCode())
 	return nil
 }
 
@@ -162,14 +154,7 @@ func handlePrintRequest(urlStr string) {
 		if err == nil {
 			fmt.Println("Test successful")
 			showNotification("Test Success", "Connection test successful")
-			return
 		}
-		return
-	}
-
-	// Add configuration handling
-	if normalizedPath == "config" || normalizedHost == "config" {
-		handleConfigCommand(os.Args)
 		return
 	}
 
@@ -220,31 +205,4 @@ func handlePrintRequest(urlStr string) {
 
 	fmt.Printf("Successfully printed label for %s\n", itemName)
 	showNotification("Print Success", fmt.Sprintf("Successfully printed label for %s", itemName))
-}
-
-// Add this new function to handle configuration commands
-func handleConfigCommand(args []string) {
-	if len(args) < 3 {
-		fmt.Println("Usage: inventoryt-printer://config/endpoint?url=<new_endpoint>")
-		return
-	}
-
-	queryParams, err := url.ParseQuery(args[2])
-	if err != nil {
-		fmt.Printf("Failed to parse query parameters: %v\n", err)
-		return
-	}
-
-	newEndpoint := queryParams.Get("url")
-	if newEndpoint == "" {
-		fmt.Println("No endpoint URL provided")
-		return
-	}
-
-	if err := SetTestEndpoint(newEndpoint); err != nil {
-		fmt.Printf("Failed to save configuration: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Test endpoint updated to: %s\n", newEndpoint)
 }
