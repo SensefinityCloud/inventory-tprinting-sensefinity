@@ -53,7 +53,7 @@ jobs:
           rm dist/inventory-printer  # Remove raw binary
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: |
