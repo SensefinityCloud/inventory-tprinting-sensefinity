@@ -11,37 +11,62 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30  # Add a timeout of 30 minutes
-    
+    timeout-minutes: 30
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.21'  # Updated from 1.20 to 1.21
-          
+          go-version: '1.21'
+
       - name: Build Application
         env:
           GOOS: ${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
           GOARCH: amd64
         run: |
           go build -o dist/inventory-printer${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
-        
+
+      - name: Create DEB Package (Ubuntu Only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          # Install nfpm
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+          # Create minimal nfpm configuration
+          cat <<EOF > nfpm.yaml
+          name: inventory-printer
+          version: ${{ github.run_number }}
+          arch: amd64
+          maintainer: Ricardo Martins
+          description: Inventory Printer Application
+          homepage: https://github.com/SensefinityCloud/inventory-tprinting-sensefinity
+          license: MIT
+          contents:
+            - src: dist/inventory-printer
+              dst: /usr/bin/inventory-printer
+          EOF
+
+          # Build .deb and clean up binary
+          ~/go/bin/nfpm package -p deb -f nfpm.yaml --target dist/
+          rm dist/inventory-printer  # Remove raw binary
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
-          path: dist/inventory-printer*
-            
+          path: |
+            ${{ matrix.os == 'ubuntu-latest' && 'dist/*.deb' || 'dist/*.exe' }}
+
   create-release:
     needs: build
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v3
-        
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
